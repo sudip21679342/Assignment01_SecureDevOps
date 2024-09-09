@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: saleor-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: saleor-db
+  template:
+    metadata:
+      labels:
+        app: saleor-db
+    spec:
+      containers:
+      - name: saleor-db
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          value: "saleor"
+        - name: POSTGRES_PASSWORD
+          value: "saleor"
+        volumeMounts:
+        - name: saleor-db
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: saleor-db
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: saleor-db
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: saleor-db
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: saleor-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: saleor-api
+  template:
+    metadata:
+      labels:
+        app: saleor-api
+    spec:
+      containers:
+      - name: saleor-api
+        image: ghcr.io/saleor/saleor:3.20
+        ports:
+        - containerPort: 8000
+        env:
+        - name: JAEGER_AGENT_HOST
+          value: "jaeger"
+        - name: DASHBOARD_URL
+          value: "http://localhost:9000/"
+        - name: ALLOWED_HOSTS
+          value: "localhost,api,192.168.49.2"
+        - name: DB_NAME
+          value: "saleor"
+        - name: DB_USER
+          value: "saleor"
+        - name: DB_PASSWORD
+          value: "saleor"
+        - name: DB_HOST
+          value: "saleor-db"
+        - name: DB_PORT
+          value: "5432"
+        volumeMounts:
+        - name: saleor-media
+          mountPath: /app/media
+      volumes:
+      - name: saleor-media
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: saleor-api
+spec:
+  type: LoadBalancer
+  loadBalancerIP: YOUR_RESERVED_STATIC_IP
+  ports:
+    - port: 80
+      targetPort: 8000
+  selector:
+    app: saleor-api
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: saleor-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: saleor-dashboard
+  template:
+    metadata:
+      labels:
+        app: saleor-dashboard
+    spec:
+      containers:
+      - name: saleor-dashboard
+        image: ghcr.io/saleor/saleor-dashboard:latest
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: saleor-dashboard
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 80
+    nodePort: 30002
+  selector:
+    app: saleor-dashboard

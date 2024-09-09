@@ -1,0 +1,202 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: saleor-config
+data:
+  ALLOWED_HOSTS: "1.42.169.211,api,34.87.215.35"
+  JAEGER_AGENT_HOST: "jaeger"
+  DASHBOARD_URL: "http://localhost:8000/"
+  DB_NAME: "saleor"
+  DB_USER: "saleor"
+  DB_PASSWORD: "saleor"
+  DB_HOST: "saleor-db"
+  DB_PORT: "5432"
+  CELERY_BROKER_URL: "redis://redis:6379/1"
+  DEFAULT_FROM_EMAIL: "noreply@example.com"
+  EMAIL_URL: "smtp://mailpit:1025"
+  SECRET_KEY: "changeme"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: saleor-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: saleor-db
+  template:
+    metadata:
+      labels:
+        app: saleor-db
+    spec:
+      containers:
+      - name: saleor-db
+        image: gcr.io/isec6000secdevop21679342ass1/postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          value: "saleor"
+        - name: POSTGRES_PASSWORD
+          value: "saleor"
+        volumeMounts:
+        - name: saleor-db
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: saleor-db
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: saleor-db
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: saleor-db
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: saleor-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: saleor-api
+  template:
+    metadata:
+      labels:
+        app: saleor-api
+    spec:
+      containers:
+      - name: saleor-api
+        image: gcr.io/isec6000secdevop21679342ass1/saleor:3.20
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DATABASE_URL
+          value: "postgres://saleor:saleor@saleor-db:5432/saleor"
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: saleor-api
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 8000
+  selector:
+    app: saleor-api
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: saleor-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: saleor-dashboard
+  template:
+    metadata:
+      labels:
+        app: saleor-dashboard
+    spec:
+      containers:
+      - name: saleor-dashboard
+        image: gcr.io/isec6000secdevop21679342ass1/saleor-dashboard:latest
+        ports:
+        - containerPort: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: saleor-dashboard
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: saleor-dashboard
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:alpine
+        ports:
+        - containerPort: 6379
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: 6379
+  selector:
+    app: redis
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailpit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mailpit
+  template:
+    metadata:
+      labels:
+        app: mailpit
+    spec:
+      containers:
+      - name: mailpit
+        image: mailpit/mailpit
+        ports:
+        - containerPort: 1025
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailpit
+spec:
+  type: ClusterIP
+  ports:
+    - port: 1025
+      targetPort: 1025
+  selector:
+    app: mailpit
